@@ -1,0 +1,76 @@
+#!/usr/bin/env python
+#coding:utf-8
+#构建PostgreSQL为可相对目录运行的程序
+
+import os,sys,re
+
+if len(sys.argv)<2:
+    print('%s pgdir' % sys.argv[0])
+    sys.exit(-1)
+
+pwd=os.getcwd()
+pgdir=os.path.join(pwd,sys.argv[1])
+print(pgdir)
+
+if len(sys.argv)>2 and sys.argv[2]=='-d':
+    os.system('rm -Rf %s' % pgdir)
+    os.system('rm -Rf /tmp/pg-build')
+
+if os.path.isdir(pgdir):
+    print('%s 已经存在，请先删除或改名' % pgdir)
+    sys.exit(-2)
+
+_p=os.path.join(pwd,'src')
+if not os.path.isdir(_p):
+    print('当前目录下没有src目录,请确认是否是PostgreSQL目录')
+    sys.exit(-10)
+
+if os.path.isdir('/tmp/pg-build'):
+    print('目录/tmp/pg-build已经存在,请先删除这个目录')
+    sys.exit(-11)
+
+os.mkdir('/tmp/pg-build/')
+
+if sys.platform=='darwin':
+    i=os.system('./configure --prefix=/tmp/pg-build')
+    if i<>0:
+        sys.exit(-12)
+    i=os.system('make')
+    if i<>0:
+        sys.exit(-13)
+    i=os.system('make install')
+    if i<>0:
+        sys.exit(-14)
+
+    cmd="""
+    find /tmp/pg-build/bin -type f | \
+      xargs -L 1 install_name_tool -change \
+      /tmp/pg-build/lib/libpq.5.dylib \
+      '@executable_path/../lib/libpq.5.dylib'
+    """
+    i=os.system(cmd)
+    if i<>0:
+        sys.exit(-15)
+
+
+if sys.platform=='linux2':
+    i=os.system('./configure --prefix=/tmp/pg-build --disable-rpath')
+    if i<>0:
+        sys.exit(-12)
+    os.putenv('LD_RUN_PATH','$ORIGIN/../lib')
+    i=os.system('make')
+    if i<>0:
+        sys.exit(-13)
+    i=os.system('make install')
+    if i<>0:
+        sys.exit(-14)
+
+
+
+
+os.mkdir(pgdir)
+os.system('cp -R /tmp/pg-build/* %s' % pgdir)
+os.system('mkdir %s/data' % pgdir)
+os.system('%s/bin/initdb %s/data' % (pgdir,pgdir))
+os.system('%s/bin/pg_ctl -D %s/data start' % (pgdir,pgdir))
+
